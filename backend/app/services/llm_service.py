@@ -146,6 +146,7 @@ def _gerar_com_huggingface_langchain(prompt: str) -> str | None:
 			huggingfacehub_api_token=settings.huggingface_api_token,
 			temperature=settings.llm_temperature,
 			max_new_tokens=settings.llm_max_new_tokens,
+            model=settings.huggingface_chat_model,
 		)
 		chain = template | llm | StrOutputParser()
 		result = chain.invoke(
