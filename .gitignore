@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.python-version
+
+# Virtual environments
+venv/
+.env/
+.venv/
+ENV/
+env/
+
+# FastAPI / general Python app
+*.log
+*.sqlite3
+*.db
+instance/
+.pyre/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# LangChain / AI tooling
+*.cache
+.cache/
+langchain_cache/
+
+# Postgres local data
+*.sql
+*.dump
+postgres_data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
