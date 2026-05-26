@@ -22,6 +22,10 @@ def gerar_texto_nivelamento_llm(prompt: str, fallback_text: str) -> str:
 
 
 def _gerar_com_ollama(prompt: str) -> str | None:
+	langchain_response = _gerar_com_ollama_langchain(prompt)
+	if langchain_response:
+		return langchain_response
+
 	payload = {
 		"model": settings.ollama_chat_model,
 		"prompt": f"{NIVELAMENTO_SYSTEM_PROMPT}\n\n{prompt}",
@@ -45,6 +49,10 @@ def _gerar_com_ollama(prompt: str) -> str | None:
 
 
 def _gerar_com_huggingface(prompt: str) -> str | None:
+	langchain_response = _gerar_com_huggingface_langchain(prompt)
+	if langchain_response:
+		return langchain_response
+
 	if not settings.huggingface_api_token:
 		return None
 
@@ -88,6 +96,66 @@ def _gerar_com_huggingface(prompt: str) -> str | None:
 						generated = entry.get("generated_text")
 						if isinstance(generated, str) and generated.strip():
 							return generated.strip()
+	except Exception:
+		return None
+	return None
+
+
+def _gerar_com_ollama_langchain(prompt: str) -> str | None:
+	try:
+		from langchain_core.output_parsers import StrOutputParser
+		from langchain_core.prompts import ChatPromptTemplate
+		from langchain_ollama import ChatOllama
+
+		chat_prompt = ChatPromptTemplate.from_messages(
+			[
+				("system", NIVELAMENTO_SYSTEM_PROMPT),
+				("human", "{user_prompt}"),
+			]
+		)
+		llm = ChatOllama(
+			model=settings.ollama_chat_model,
+			base_url=settings.ollama_base_url,
+			temperature=settings.llm_temperature,
+		)
+		chain = chat_prompt | llm | StrOutputParser()
+		result = chain.invoke({"user_prompt": prompt})
+		if isinstance(result, str) and result.strip():
+			return result.strip()
+	except Exception:
+		return None
+	return None
+
+
+def _gerar_com_huggingface_langchain(prompt: str) -> str | None:
+	if not settings.huggingface_api_token:
+		return None
+
+	try:
+		from langchain_core.output_parsers import StrOutputParser
+		from langchain_core.prompts import PromptTemplate
+
+		try:
+			from langchain_huggingface import HuggingFaceEndpoint
+		except Exception:
+			from langchain_community.llms import HuggingFaceEndpoint
+
+		template = PromptTemplate.from_template("{system}\n\n{user_prompt}")
+		llm = HuggingFaceEndpoint(
+			repo_id=settings.huggingface_chat_model,
+			huggingfacehub_api_token=settings.huggingface_api_token,
+			temperature=settings.llm_temperature,
+			max_new_tokens=settings.llm_max_new_tokens,
+		)
+		chain = template | llm | StrOutputParser()
+		result = chain.invoke(
+			{
+				"system": NIVELAMENTO_SYSTEM_PROMPT,
+				"user_prompt": prompt,
+			}
+		)
+		if isinstance(result, str) and result.strip():
+			return result.strip()
 	except Exception:
 		return None
 	return None
