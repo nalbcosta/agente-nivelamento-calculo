@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
-from backend.app.schemas.request import NivelamentoRequest
-from backend.app.schemas.response import HealthResponse, NivelamentoResponse
-from backend.app.services.nivelamento_service import avaliar_nivelamento
+from app.schemas.request import NivelamentoRequest
+from app.schemas.response import HealthResponse, NivelamentoResponse
+from app.services.nivelamento_service import avaliar_nivelamento
 
 router = APIRouter(tags=["api"])
 

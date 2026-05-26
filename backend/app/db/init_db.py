@@ -1,5 +1,5 @@
-from backend.app.db import models  # noqa: F401
-from backend.app.db.session import Base, engine
+from app.db import models  # noqa: F401
+from app.db.session import Base, engine
 
 
 def init_db() -> None:

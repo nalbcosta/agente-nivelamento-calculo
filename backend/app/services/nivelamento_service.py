@@ -1,5 +1,5 @@
-from backend.app.schemas.request import NivelamentoRequest
-from backend.app.schemas.response import NivelamentoResponse
+from app.schemas.request import NivelamentoRequest
+from app.schemas.response import NivelamentoResponse
 
 REQUIRED_TOPICS = {
 	"algebra_basica": "Algebra basica",

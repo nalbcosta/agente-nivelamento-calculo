@@ -9,9 +9,9 @@ from sqlalchemy import pool
 from alembic import context
 
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SRC_DIR = os.path.join(BACKEND_DIR, "src")
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
+APP_DIR = os.path.join(BACKEND_DIR, "app")
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
 
 from app.core.config import settings
 from app.db import models  # noqa: F401
