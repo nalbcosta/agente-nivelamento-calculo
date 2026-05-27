@@ -5,12 +5,16 @@ __pycache__/
 .pytest_cache/
 .python-version
 
+
 # Virtual environments
 venv/
 .env/
 .venv/
 ENV/
 env/
+agente/
+agente_nivelamento_backend.egg-info/
+build/
 
 # FastAPI / general Python app
 *.log

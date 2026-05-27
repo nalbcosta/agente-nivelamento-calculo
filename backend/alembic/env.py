@@ -8,10 +8,14 @@ from sqlalchemy import pool
 
 from alembic import context
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+APP_DIR = os.path.join(BACKEND_DIR, "app")
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
 
 from app.core.config import settings
-from app.db.models import Base
+from app.db import models  # noqa: F401
+from app.db.session import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -21,7 +25,7 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-    
+
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # add your model's MetaData object here
