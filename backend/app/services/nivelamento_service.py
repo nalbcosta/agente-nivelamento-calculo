@@ -1,9 +1,15 @@
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import DocumentChunk, StudentReadiness
-from app.prompts.nivelamento_prompt import construir_prompt_nivelamento
+from app.prompts.nivelamento_prompt import (
+	PREREQUISITOS_SYSTEM_PROMPT,
+	construir_prompt_extracao_prerequisitos,
+	construir_prompt_nivelamento,
+)
 from app.schemas.request import NivelamentoRequest
 from app.schemas.response import NivelamentoResponse
 from app.services.embedding_service import gerar_embedding
@@ -14,7 +20,7 @@ from app.services.ingestion import (
 	extrair_prerequisitos,
 	extrair_topicos,
 )
-from app.services.llm_service import gerar_texto_nivelamento_llm
+from app.services.llm_service import gerar_texto_llm, gerar_texto_nivelamento_llm
 
 
 def avaliar_nivelamento(payload: NivelamentoRequest, db: Session) -> NivelamentoResponse:
@@ -22,8 +28,11 @@ def avaliar_nivelamento(payload: NivelamentoRequest, db: Session) -> Nivelamento
 	context_chunks = recuperar_contexto_semantico(payload, db)
 	context_text = "\n\n".join(context_chunks)
 
-	prerequisites = extrair_prerequisitos(context_text)
-	topics = extrair_topicos(context_text)
+	prerequisites, topics = extrair_prerequisitos_topicos_llm(context_chunks)
+	if not prerequisites:
+		prerequisites = extrair_prerequisitos(context_text)
+	if not topics:
+		topics = extrair_topicos(context_text)
 	if not prerequisites or not topics:
 		doc_result = processar_documento(settings.lesson_markdown_path)
 		if isinstance(doc_result, dict):
@@ -120,3 +129,69 @@ def gerar_texto_nivelamento(is_ready: bool, missing: list[str], topics: list[str
 		"Diagnostico: ainda nao apto para o melhor aproveitamento da aula. "
 		f"Nivelamento sugerido: revisar {missing_text} com resumo teorico curto e 3 exercicios basicos antes de avancar."
 	)
+
+
+def extrair_prerequisitos_topicos_llm(retrieved_context: list[str]) -> tuple[list[str], list[str]]:
+	if not retrieved_context:
+		return [], []
+
+	prompt = construir_prompt_extracao_prerequisitos(retrieved_context)
+	fallback_json = '{"prerequisites": [], "topics": []}'
+	raw_text, _ = gerar_texto_llm(
+		prompt=prompt,
+		fallback_text=fallback_json,
+		system_prompt=PREREQUISITOS_SYSTEM_PROMPT,
+	)
+	parsed = _parse_extracao_json(raw_text)
+	if not parsed:
+		return [], []
+
+	prereq_raw = parsed.get("prerequisites", [])
+	topics_raw = parsed.get("topics", [])
+
+	prereq = _sanitize_string_list(prereq_raw)
+	topics = _sanitize_string_list(topics_raw)
+	return prereq, topics
+
+
+def _sanitize_string_list(values: object) -> list[str]:
+	if not isinstance(values, list):
+		return []
+	cleaned: list[str] = []
+	for value in values:
+		if not isinstance(value, str):
+			continue
+		item = value.strip()
+		if item and item not in cleaned:
+			cleaned.append(item)
+	return cleaned
+
+
+def _parse_extracao_json(raw_text: str) -> dict[str, object] | None:
+	if not raw_text.strip():
+		return None
+
+	candidate = raw_text.strip()
+	if "```" in candidate:
+		candidate = candidate.replace("```json", "").replace("```", "").strip()
+
+	try:
+		parsed = json.loads(candidate)
+		if isinstance(parsed, dict):
+			return parsed
+	except Exception:
+		pass
+
+	start = candidate.find("{")
+	end = candidate.rfind("}")
+	if start == -1 or end == -1 or end <= start:
+		return None
+
+	try:
+		parsed = json.loads(candidate[start : end + 1])
+		if isinstance(parsed, dict):
+			return parsed
+	except Exception:
+		return None
+
+	return None

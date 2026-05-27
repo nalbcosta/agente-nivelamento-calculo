@@ -44,6 +44,11 @@ def client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
         "extrair_topicos",
         lambda _text: ["Limites", "Derivada", "Regra da Cadeia"],
     )
+    monkeypatch.setattr(
+        flashcard_service,
+        "_gerar_flashcards_llm",
+        lambda _payload, _ctx, _selected: ({}, "fallback"),
+    )
 
     with TestClient(app) as client:
         yield client
@@ -112,3 +117,37 @@ def test_flashcards_use_persisted_state_without_new_payload(client: TestClient) 
 
     returned_concepts = {item["concept"].lower() for item in second_json["flashcards"]}
     assert "limites" not in returned_concepts
+
+
+def test_flashcards_use_llm_items_when_available(client: TestClient, monkeypatch) -> None:
+
+    def fake_llm_cards(_payload, _ctx, selected):
+        concept = selected[0]
+        normalized = concept.strip().lower()
+        return (
+            {
+                normalized: flashcard_service.FlashcardItem(
+                    concept=concept,
+                    front=f"Pergunta LLM sobre {concept}",
+                    back=f"Resposta LLM sobre {concept}",
+                )
+            },
+            "huggingface",
+        )
+
+    monkeypatch.setattr(flashcard_service, "_gerar_flashcards_llm", fake_llm_cards)
+
+    payload = {
+        "student_id": "aluno_llm_001",
+        "student_background": "",
+        "known_topics": [],
+        "memorized_concepts": [],
+        "target_flashcards": 1,
+    }
+    response = client.post("/api/v1/flashcards", json=payload)
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["llm_source"] == "huggingface"
+    assert len(body["flashcards"]) == 1
+    assert body["flashcards"][0]["front"].startswith("Pergunta LLM")

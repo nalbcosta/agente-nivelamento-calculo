@@ -21,6 +21,25 @@ Nivelamento: <ate 6 linhas, com foco pratico>
 Plano: <3 bullets curtos e acionaveis>
 """.strip()
 
+PREREQUISITOS_SYSTEM_PROMPT = """
+Voce extrai dados estruturados da aula de Calculo I.
+
+Objetivo:
+- Identificar pre-requisitos necessarios para compreender a aula.
+- Identificar topicos centrais abordados no conteudo.
+
+Regras obrigatorias:
+- Use somente o contexto fornecido.
+- Nao invente itens fora do texto.
+- Retorne somente JSON valido.
+
+Formato JSON obrigatorio:
+{
+	"prerequisites": ["..."],
+	"topics": ["..."]
+}
+""".strip()
+
 NIVELAMENTO_PROMPT_TEMPLATE = PromptTemplate.from_template(
 	"""
 Contexto da aula (evidencias):
@@ -39,6 +58,18 @@ Tarefa:
 2. Gere um nivelamento de no maximo 6 linhas para cobrir lacunas.
 3. Inclua um plano com 3 acoes praticas para estudo imediato.
 4. Mantenha estritamente o formato solicitado no system prompt.
+""".strip()
+)
+
+PREREQUISITOS_PROMPT_TEMPLATE = PromptTemplate.from_template(
+	"""
+Contexto da aula:
+{context}
+
+Tarefa:
+1. Extraia os pre-requisitos explicitamente exigidos para acompanhar a aula.
+2. Extraia os topicos principais realmente presentes no conteudo.
+3. Retorne apenas JSON no formato exigido.
 """.strip()
 )
 
@@ -63,3 +94,8 @@ def construir_prompt_nivelamento(
 		prereq=prereq,
 		missing=missing,
 	)
+
+
+def construir_prompt_extracao_prerequisitos(retrieved_context: list[str]) -> str:
+	context = "\n\n".join(retrieved_context[:6]) if retrieved_context else "Sem contexto recuperado"
+	return PREREQUISITOS_PROMPT_TEMPLATE.format(context=context)

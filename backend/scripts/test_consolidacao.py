@@ -24,6 +24,32 @@ def run_consolidacao(client: httpx.Client, base_url: str, payload: dict) -> dict
     return response.json()
 
 
+def _validate_consolidacao_response(result: dict) -> tuple[bool, str]:
+    questions = result.get("consolidation_questions", [])
+    dominated = result.get("dominated_objectives", [])
+    partial = result.get("partial_objectives", [])
+    not_understood = result.get("not_understood_objectives", [])
+    review = result.get("review_recommendation", "")
+
+    if not isinstance(questions, list) or not (3 <= len(questions) <= 5):
+        return False, "Quantidade de perguntas de consolidacao fora do intervalo 3-5."
+
+    for question in questions:
+        if not isinstance(question, str) or not question.strip():
+            return False, "Perguntas de consolidacao invalidas."
+
+    if not isinstance(dominated, list) or not isinstance(partial, list) or not isinstance(not_understood, list):
+        return False, "Campos de diagnostico de objetivos estao invalidos."
+
+    if len(dominated) + len(partial) + len(not_understood) == 0:
+        return False, "Diagnostico nao classificou nenhum objetivo de conhecimento."
+
+    if not isinstance(review, str) or len(review.strip()) < 20:
+        return False, "Recomendacao de revisao ausente ou muito curta."
+
+    return True, "Case 2 validado: perguntas, diagnostico de objetivos e recomendacao de revisao presentes."
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Teste o fluxo de consolidacao de aprendizagem da API de calculo."
@@ -78,6 +104,12 @@ def main() -> int:
         print("\n[2/2] Avaliando consolidacao de aprendizagem...")
         consolidacao_result = run_consolidacao(client, args.backend_url, payload)
         print(json.dumps(consolidacao_result, indent=2, ensure_ascii=False))
+
+        ok, message = _validate_consolidacao_response(consolidacao_result)
+        if not ok:
+            print(f"\n[ERRO] {message}")
+            return 1
+        print(f"\n[OK] {message}")
 
     return 0
 

@@ -41,6 +41,9 @@ def avaliar_consolidacao(payload: ConsolidacaoRequest, db: Session) -> Consolida
         objectives=objectives,
         dominated=dominated_initial,
         not_understood=not_understood_initial,
+        known_topics=payload.known_topics,
+        student_background=payload.student_background or "",
+        answered_questions=payload.answered_questions,
     )
 
     prompt = construir_prompt_consolidacao(
@@ -79,11 +82,17 @@ def _fallback_consolidacao(
     objectives: list[str],
     dominated: list[str],
     not_understood: list[str],
+    known_topics: list[str],
+    student_background: str,
+    answered_questions: list[str],
 ) -> dict[str, object]:
-    partial: list[str] = []
-    if len(not_understood) > 1:
-        partial = not_understood[:1]
-        not_understood = not_understood[1:]
+    dominated, partial, not_understood = _classificar_objetivos_por_evidencia(
+        objectives=objectives,
+        dominated_initial=dominated,
+        known_topics=known_topics,
+        student_background=student_background,
+        answered_questions=answered_questions,
+    )
 
     question_pool = {
         "Limites": "O que significa dizer que o limite de uma funcao existe em um ponto?",
@@ -120,6 +129,49 @@ def _fallback_consolidacao(
         "not_understood_objectives": not_understood,
         "review_recommendation": review,
     }
+
+
+def _classificar_objetivos_por_evidencia(
+    objectives: list[str],
+    dominated_initial: list[str],
+    known_topics: list[str],
+    student_background: str,
+    answered_questions: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    dominated_norm = {normalizar_texto(item) for item in dominated_initial}
+    known_norm = {normalizar_texto(item) for item in known_topics}
+    evidence_parts = [student_background or ""] + answered_questions
+    evidence_text = " ".join(part for part in evidence_parts if isinstance(part, str))
+    evidence_norm = normalizar_texto(evidence_text)
+
+    dominated: list[str] = []
+    partial: list[str] = []
+    not_understood: list[str] = []
+
+    for objective in objectives:
+        objective_norm = normalizar_texto(objective)
+        if objective_norm in dominated_norm or objective_norm in known_norm:
+            dominated.append(objective)
+            continue
+
+        token_hits = 0
+        for token in objective_norm.replace("'", " ").split():
+            if len(token) < 4:
+                continue
+            if token in evidence_norm:
+                token_hits += 1
+
+        if objective_norm in evidence_norm or token_hits >= 2:
+            partial.append(objective)
+            continue
+
+        not_understood.append(objective)
+
+    if not partial and len(not_understood) > 1:
+        partial = not_understood[:1]
+        not_understood = not_understood[1:]
+
+    return dominated, partial, not_understood
 
 
 def _parse_consolidacao_json(raw_text: str) -> dict[str, object] | None:
