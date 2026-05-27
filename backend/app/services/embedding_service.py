@@ -92,7 +92,7 @@ def _gerar_embedding_huggingface(texto: str) -> list[float] | None:
 	try:
 		with httpx.Client(timeout=40.0) as client:
 			response = client.post(
-				f"https://api-inference.huggingface.co/pipeline/feature-extraction/{settings.huggingface_embedding_model}",
+				f"https://router.huggingface.co/hf-inference/models/{settings.huggingface_embedding_model}",
 				headers=headers,
 				json=payload,
 			)

@@ -7,11 +7,16 @@ WORKDIR /app
 
 COPY pyproject.toml /app/pyproject.toml
 COPY app /app/app
+COPY alembic.ini /app/alembic.ini
+COPY alembic /app/alembic
+COPY scripts /app/scripts
+COPY data /app/data
 
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
 
-COPY alembic.ini /app/alembic.ini
-COPY alembic /app/alembic
+RUN useradd -m appuser && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
 

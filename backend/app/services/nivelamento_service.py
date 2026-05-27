@@ -50,7 +50,10 @@ def avaliar_nivelamento(payload: NivelamentoRequest, db: Session) -> Nivelamento
 		missing_prerequisites=missing,
 		retrieved_context=context_chunks,
 	)
-	support_text = gerar_texto_nivelamento_llm(prompt=prompt, fallback_text=fallback_text)
+	support_text, llm_source = gerar_texto_nivelamento_llm(
+		prompt=prompt,
+		fallback_text=fallback_text,
+	)
 
 	readiness = StudentReadiness(
 		student_id=payload.student_id,
@@ -68,6 +71,7 @@ def avaliar_nivelamento(payload: NivelamentoRequest, db: Session) -> Nivelamento
 		detected_lesson_topics=topics,
 		retrieved_context=context_chunks,
 		support_text=support_text,
+		llm_source=llm_source,
 	)
 
 

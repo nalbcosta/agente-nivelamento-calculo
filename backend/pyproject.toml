@@ -31,3 +31,8 @@ package-dir = {"" = "."}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[project.optional-dependencies]
+dev = [
+	"pytest>=8.0.0",
+]

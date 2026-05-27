@@ -1,14 +1,14 @@
 services:
   db:
-    image: pgvector/pgvector:latest
+    image: pgvector/pgvector:pg18-trixie
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: agente_nivelamento
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
     ports:
-      - '5432:5432'
+      - '5438:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d agente_nivelamento"]
       interval: 5s
@@ -21,16 +21,17 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
     ports:
       - '8000:8000'
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - ./backend/app:/app/app
-      - ./backend/.env:/app/.env
-      - ./data:/app/data
 
 volumes:
   db_data:
