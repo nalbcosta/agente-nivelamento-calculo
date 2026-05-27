@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 	app_name: str = "Agente Nivelamento Calculo"
 	app_version: str = "0.1.0"
 	api_v1_prefix: str = "/api/v1"
+	cors_allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 	lesson_markdown_path: str = DEFAULT_LESSON_PATH
 	embedding_provider: str = "huggingface"
 	embedding_model_name: str = "BAAI/bge-small-en-v1.5"

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes import router as api_router
@@ -13,6 +14,18 @@ def create_app() -> FastAPI:
 		docs_url="/docs",
 		redoc_url="/redoc",
 		openapi_url="/openapi.json",
+	)
+	allow_origins = [
+		origin.strip()
+		for origin in settings.cors_allow_origins.split(",")
+		if origin.strip()
+	]
+	app.add_middleware(
+		CORSMiddleware,
+		allow_origins=allow_origins,
+		allow_credentials=True,
+		allow_methods=["*"],
+		allow_headers=["*"],
 	)
 	app.include_router(api_router, prefix=settings.api_v1_prefix)
 	try:
