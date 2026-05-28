@@ -35,6 +35,8 @@ Formato JSON obrigatorio:
 
 FLASHCARD_PROMPT_TEMPLATE = PromptTemplate.from_template(
 	"""
+Aluno: {student_id}
+
 Contexto da aula (evidencias):
 {context}
 
@@ -56,6 +58,7 @@ Tarefa:
 
 
 def construir_prompt_flashcards(
+	student_id: str,
 	student_background: str,
 	known_topics: list[str],
 	retrieved_context: list[str],
@@ -66,6 +69,7 @@ def construir_prompt_flashcards(
 	concepts = ", ".join(pending_concepts) if pending_concepts else "nenhum"
 
 	return FLASHCARD_PROMPT_TEMPLATE.format(
+		student_id=student_id,
 		context=context,
 		student_background=student_background or "nao informado",
 		known_topics=known,

@@ -17,3 +17,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
 }
+
+button {
+  cursor: pointer;
+}

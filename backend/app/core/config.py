@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 	embedding_model_name: str = "BAAI/bge-small-en-v1.5"
 	embedding_dimension: int = 384
 	llm_provider: str = "huggingface"
-	llm_temperature: float = 0.2
+	llm_temperature: float = 0.6
 	llm_max_new_tokens: int = 320
 	ollama_base_url: str = "http://host.docker.internal:11434"
 	ollama_embedding_model: str = "nomic-embed-text"

@@ -34,8 +34,16 @@ export type FlashcardsResponse = {
   llm_source: string;
 };
 
+export type StudentProfile = {
+  student_id: string;
+  background: string | null;
+  known_topics: string[];
+  memorized_concepts: string[];
+  previous_consolidation_questions: string[];
+};
+
 export const flowLabels: Record<Flow, string> = {
   nivelamento: "Case 1 - Nivelamento",
-  consolidacao: "Case 2 - Consolidacao",
+  consolidacao: "Case 2 - Consolidação",
   flashcards: "Case 3 - Flashcards",
 };

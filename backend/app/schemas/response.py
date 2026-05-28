@@ -51,3 +51,11 @@ class DiagnosticoResponse(BaseModel):
     review_actions: list[str] = Field(default_factory=list)
     retrieved_context: list[str] = Field(default_factory=list)
     llm_source: str = "fallback"
+
+
+class StudentProfileResponse(BaseModel):
+    student_id: str
+    background: str | None = None
+    known_topics: list[str] = Field(default_factory=list)
+    memorized_concepts: list[str] = Field(default_factory=list)
+    previous_consolidation_questions: list[str] = Field(default_factory=list)

@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, BrainCircuit, CheckCircle2, Loader2, Upload } from "lucide-react";
 
 import { ConsolidacaoPanel } from "./components/ConsolidacaoPanel";
 import { FlashcardsPanel } from "./components/FlashcardsPanel";
 import { NivelamentoPanel } from "./components/NivelamentoPanel";
+import { TagInput } from "./components/TagInput";
 import {
   type ConsolidacaoResponse,
   type FlashcardsResponse,
   type Flow,
   flowLabels,
   type NivelamentoResponse,
+  type StudentProfile,
 } from "./types";
 
 const apiBaseUrl =
@@ -23,6 +26,8 @@ type EndpointState = {
   error: string | null;
   success: string | null;
 };
+
+type Toast = { id: string; message: string; type: "success" | "error" };
 
 type SessionSnapshot = {
   flow: Flow;
@@ -91,7 +96,11 @@ export default function Home() {
 
   const [consolidacaoStep, setConsolidacaoStep] = useState<"idle" | "questions" | "diagnosed">("idle");
   const [consolidacaoQuestions, setConsolidacaoQuestions] = useState<string[]>([]);
+  const [consolidacaoAnswers, setConsolidacaoAnswers] = useState<string[]>([]);
   const [sessionMemorized, setSessionMemorized] = useState<string[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
+  const [lastFetchedStudentId, setLastFetchedStudentId] = useState<string | null>(null);
 
   const [endpointStates, setEndpointStates] = useState<Record<Endpoint, EndpointState>>({
     ingest: { loading: false, error: null, success: null },
@@ -125,6 +134,37 @@ export default function Home() {
     localStorage.setItem(sessionStorageKey, JSON.stringify(snap));
   }, [flow, knownTopicsText, memorizedConceptsText, studentBackground, studentId, targetFlashcards]);
 
+  // Re-fetch profile whenever studentId changes
+  useEffect(() => {
+    const id = studentId.trim();
+    if (!id || id === lastFetchedStudentId) return;
+    setLastFetchedStudentId(id);
+    setStudentProfile(null);
+    fetch(`${apiBaseUrl}/api/v1/students/${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: StudentProfile | null) => {
+        if (!data) return;
+        setStudentProfile(data);
+        if (data.memorized_concepts?.length) {
+          setMemorizedConceptsText((prev) => {
+            const existing = new Set(
+              prev
+                .split(/\n|,/)
+                .map((s) => s.trim().toLowerCase())
+                .filter(Boolean),
+            );
+            const toAdd = data.memorized_concepts.filter((c) => !existing.has(c.toLowerCase()));
+            if (!toAdd.length) return prev;
+            return [
+              ...(prev ? prev.split(/\n|,/).map((s) => s.trim()).filter(Boolean) : []),
+              ...toAdd,
+            ].join("\n");
+          });
+        }
+      })
+      .catch(() => undefined);
+  }, [studentId, lastFetchedStudentId]);
+
   function setEndpointLoading(endpoint: Endpoint, loading: boolean): void {
     setEndpointStates((current) => ({
       ...current,
@@ -137,28 +177,26 @@ export default function Home() {
     }));
   }
 
+  function showToast(message: string, type: "success" | "error" = "success") {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
+  }
+
   function setEndpointError(endpoint: Endpoint, error: string): void {
     setEndpointStates((current) => ({
       ...current,
-      [endpoint]: {
-        ...current[endpoint],
-        loading: false,
-        error,
-        success: null,
-      },
+      [endpoint]: { ...current[endpoint], loading: false, error, success: null },
     }));
+    showToast(error, "error");
   }
 
   function setEndpointSuccess(endpoint: Endpoint, success: string): void {
     setEndpointStates((current) => ({
       ...current,
-      [endpoint]: {
-        ...current[endpoint],
-        loading: false,
-        error: null,
-        success,
-      },
+      [endpoint]: { ...current[endpoint], loading: false, error: null, success },
     }));
+    showToast(success);
   }
 
   async function ingestLesson() {
@@ -185,6 +223,14 @@ export default function Home() {
 
     setEndpointLoading(flow, true);
 
+    // Reset consolidacao state when starting fresh
+    if (flow === "consolidacao") {
+      setConsolidacaoStep("idle");
+      setConsolidacaoResult(null);
+      setConsolidacaoQuestions([]);
+      setConsolidacaoAnswers([]);
+    }
+
     try {
       if (flow === "nivelamento") {
         const response = await fetch(`${apiBaseUrl}/api/v1/nivelamento`, {
@@ -202,10 +248,6 @@ export default function Home() {
       }
 
       if (flow === "consolidacao") {
-        // Step 1: fetch questions with empty answers
-        setConsolidacaoStep("idle");
-        setConsolidacaoResult(null);
-        setConsolidacaoQuestions([]);
         const response = await fetch(`${apiBaseUrl}/api/v1/consolidacao`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -246,10 +288,12 @@ export default function Home() {
   }
 
   async function submitConsolidacaoAnswers(answers: string[]) {
+    setConsolidacaoAnswers(answers);
     setEndpointLoading("consolidacao", true);
     try {
       const payload = {
         ...commonPayload,
+        consolidation_questions: consolidacaoQuestions,
         answered_questions: answers.filter((a) => a.trim()),
       };
       const response = await fetch(`${apiBaseUrl}/api/v1/consolidacao`, {
@@ -262,8 +306,33 @@ export default function Home() {
       setConsolidacaoResult(data);
       setConsolidacaoStep("diagnosed");
       setEndpointSuccess("consolidacao", "Diagnóstico concluído.");
+      // Re-fetch profile to show updated question history count
+      setLastFetchedStudentId(null);
     } catch (error) {
       setEndpointError("consolidacao", error instanceof Error ? error.message : "Erro inesperado.");
+    }
+  }
+
+  async function runFlashcardsReview() {
+    setEndpointLoading("flashcards", true);
+    try {
+      const payload = {
+        ...commonPayload,
+        memorized_concepts: splitList(memorizedConceptsText),
+        target_flashcards: targetFlashcards,
+        review_mode: true,
+      };
+      const response = await fetch(`${apiBaseUrl}/api/v1/flashcards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`Falha nos flashcards (${response.status})`);
+      const data = (await response.json()) as FlashcardsResponse;
+      setFlashcardsResult(data);
+      setEndpointSuccess("flashcards", `${data.flashcards.length} flashcard(s) de revisão gerado(s).`);
+    } catch (error) {
+      setEndpointError("flashcards", error instanceof Error ? error.message : "Erro inesperado.");
     }
   }
 
@@ -274,32 +343,93 @@ export default function Home() {
       if (existing.map((s) => s.toLowerCase()).includes(concept.toLowerCase())) return prev;
       return [...existing, concept].join("\n");
     });
+    // Optimistically update the local profile badge
+    setStudentProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            memorized_concepts: prev.memorized_concepts.includes(concept)
+              ? prev.memorized_concepts
+              : [...prev.memorized_concepts, concept],
+          }
+        : prev,
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fee8d6_0%,_#f7f2ea_48%,_#eef6f0_100%)] px-5 py-10 text-zinc-900">
-      <main className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.1fr_1fr]">
-        <section className="rounded-3xl border border-zinc-300/70 bg-white/80 p-6 shadow-[0_15px_40px_-20px_rgba(40,40,40,0.45)] backdrop-blur">
-          <p className="font-mono text-xs uppercase tracking-[0.22em] text-emerald-700">Agente de IA</p>
-          <h1 className="mt-3 text-4xl font-semibold leading-tight">
-            Calculo I
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#fee8d6_0%,#f7f2ea_48%,#eef6f0_100%)] px-5 py-10 text-zinc-900">
+      {/* Toast overlay */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-xl border px-4 py-3 shadow-lg backdrop-blur-sm animate-in slide-in-from-right-4 fade-in duration-300 ${
+              toast.type === "success"
+                ? "border-emerald-200 bg-emerald-50/95 text-emerald-800"
+                : "border-red-200 bg-red-50/95 text-red-800"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-500" />
+            )}
+            <p className="text-sm leading-5">{toast.message}</p>
+          </div>
+        ))}
+      </div>
+      <main className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.15fr_1fr]">
+        {/* ── Left panel: controls ─────────────────────────────────── */}
+        <section className="rounded-3xl border border-zinc-300/70 bg-white/80 p-7 shadow-[0_15px_40px_-20px_rgba(40,40,40,0.35)] backdrop-blur">
+          <div className="flex items-center gap-2.5">
+            <BrainCircuit className="size-5 text-emerald-700" />
+            <p className="font-mono text-xs uppercase tracking-[0.22em] text-emerald-700">Agente de IA</p>
+          </div>
+          <h1 className="mt-3 text-4xl font-semibold leading-tight tracking-tight">
+            Cálculo I
             <br />
             Jornada do Aluno
           </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600">
+          <p className="mt-2.5 max-w-2xl text-sm leading-6 text-zinc-500">
             Nivelamento pré-aula, consolidação pós-aula e memorização adaptativa por flashcards.
           </p>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            {(Object.keys(flowLabels) as Flow[]).map((flowOption) => (
+          {/* Flow tabs */}
+
+          {/* Student profile badge */}
+          {studentProfile && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {studentProfile.memorized_concepts.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">
+                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                  {studentProfile.memorized_concepts.length} conceito(s) memorizados no DB
+                </span>
+              )}
+              {studentProfile.previous_consolidation_questions.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                  <span className="size-1.5 rounded-full bg-blue-400" />
+                  {studentProfile.previous_consolidation_questions.length} pergunta(s) no histórico
+                </span>
+              )}
+              {studentProfile.memorized_concepts.length === 0 &&
+                studentProfile.previous_consolidation_questions.length === 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-500">
+                    <span className="size-1.5 rounded-full bg-zinc-300" />
+                    Aluno novo — sem histórico
+                  </span>
+                )}
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">            {(Object.keys(flowLabels) as Flow[]).map((flowOption) => (
               <button
                 key={flowOption}
                 type="button"
                 onClick={() => setFlow(flowOption)}
-                className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition ${
                   flow === flowOption
-                    ? "border-emerald-700 bg-emerald-700 text-white"
-                    : "border-zinc-300 bg-white/70 hover:border-zinc-500"
+                    ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
+                    : "border-zinc-200 bg-white/60 text-zinc-600 hover:border-zinc-400 hover:bg-white"
                 }`}
               >
                 {flowLabels[flowOption]}
@@ -314,83 +444,110 @@ export default function Home() {
               void runFlow();
             }}
           >
+            {/* Student ID + Known Topics */}
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-1.5 text-sm">
-                <span className="font-medium text-zinc-700">ID do aluno</span>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  ID do aluno
+                </label>
                 <input
                   value={studentId}
                   onChange={(event) => setStudentId(event.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none ring-emerald-500/40 focus:ring"
+                  placeholder="ex: aluno_001"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                 />
-              </label>
-              <label className="space-y-1.5 text-sm">
-                <span className="font-medium text-zinc-700">Tópicos conhecidos</span>
-                <textarea
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Tópicos conhecidos
+                </label>
+                <TagInput
                   value={knownTopicsText}
-                  onChange={(event) => setKnownTopicsText(event.target.value)}
-                  placeholder="Um por linha ou separados por vírgula"
-                  className="h-20 w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none ring-emerald-500/40 focus:ring"
+                  onChange={setKnownTopicsText}
+                  placeholder="Digite um tópico e pressione Enter ou vírgula"
                 />
-              </label>
+              </div>
             </div>
 
-            <label className="space-y-1.5 text-sm">
-              <span className="font-medium text-zinc-700">Background do aluno</span>
+            {/* Background */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Background do aluno
+              </label>
               <textarea
                 value={studentBackground}
                 onChange={(event) => setStudentBackground(event.target.value)}
-                className="h-28 w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none ring-emerald-500/40 focus:ring"
+                placeholder="Descreva seu nível atual e experiências com Cálculo..."
+                rows={4}
+                className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
               />
-            </label>
+            </div>
 
             {flow === "consolidacao" ? (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 px-4 py-3 text-xs text-zinc-500">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-500">
                 As perguntas serão geradas pelo agente. Você responderá no painel ao lado.
               </div>
             ) : null}
 
             {flow === "flashcards" ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-1.5 text-sm">
-                  <span className="font-medium text-zinc-700">Conceitos memorizados</span>
-                  <textarea
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Conceitos memorizados
+                  </label>
+                  <TagInput
                     value={memorizedConceptsText}
-                    onChange={(event) => setMemorizedConceptsText(event.target.value)}
-                    placeholder="Automático após cada rodada"
-                    className="h-24 w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none ring-emerald-500/40 focus:ring"
+                    onChange={setMemorizedConceptsText}
+                    placeholder="Preenchido automaticamente após cada rodada"
                   />
                   {sessionMemorized.length > 0 ? (
-                    <p className="text-xs text-emerald-700">{sessionMemorized.length} conceito(s) já excluído(s) desta sessão</p>
+                    <p className="text-xs text-emerald-700">
+                      {sessionMemorized.length} conceito(s) excluído(s) desta sessão
+                    </p>
                   ) : null}
-                </label>
-                <label className="space-y-1.5 text-sm">
-                  <span className="font-medium text-zinc-700">Quantidade de flashcards</span>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Quantidade de flashcards
+                  </label>
                   <input
                     type="number"
                     min={1}
                     max={8}
                     value={targetFlashcards}
-                    onChange={(event) => setTargetFlashcards(Math.min(8, Math.max(1, Number(event.target.value || "1"))))}
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none ring-emerald-500/40 focus:ring"
+                    onChange={(event) =>
+                      setTargetFlashcards(Math.min(8, Math.max(1, Number(event.target.value || "1"))))
+                    }
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   />
-                </label>
+                  <p className="text-xs text-zinc-400">Entre 1 e 8 cards por rodada</p>
+                </div>
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-3 pt-2">
+            {/* Action buttons */}
+            <div className="flex flex-wrap gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => void ingestLesson()}
                 disabled={endpointStates.ingest.loading}
-                className="rounded-xl border border-zinc-400 bg-white px-4 py-2 text-sm font-medium transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center gap-2 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
+                {endpointStates.ingest.loading ? (
+                  <Loader2 className="size-4 animate-spin text-zinc-400" />
+                ) : (
+                  <Upload className="size-4 text-zinc-400" />
+                )}
                 {endpointStates.ingest.loading ? "Ingerindo..." : "Ingerir Aula"}
               </button>
               <button
                 type="submit"
                 disabled={endpointStates[flow].loading}
-                className="rounded-xl bg-emerald-700 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
+                {endpointStates[flow].loading && (
+                  <Loader2 className="size-4 animate-spin" />
+                )}
                 {endpointStates[flow].loading
                   ? "Processando..."
                   : flow === "nivelamento"
@@ -403,33 +560,12 @@ export default function Home() {
               </button>
             </div>
           </form>
-
-          {endpointStates.ingest.error ? (
-            <p className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Endpoint ingest: {endpointStates.ingest.error}
-            </p>
-          ) : null}
-          {endpointStates.ingest.success ? (
-            <p className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Endpoint ingest: {endpointStates.ingest.success}
-            </p>
-          ) : null}
-
-          {endpointStates[flow].error ? (
-            <p className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Endpoint {flow}: {endpointStates[flow].error}
-            </p>
-          ) : null}
-          {endpointStates[flow].success ? (
-            <p className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Endpoint {flow}: {endpointStates[flow].success}
-            </p>
-          ) : null}
         </section>
 
-        <section className="overflow-y-auto rounded-3xl border border-zinc-300/70 bg-white/80 p-6 shadow-[0_15px_40px_-20px_rgba(40,40,40,0.45)] backdrop-blur">
-          <div>
-            <h2 className="text-lg font-semibold">{flowLabels[flow]}</h2>
+        {/* ── Right panel: results ──────────────────────────────────── */}
+        <section className="overflow-y-auto rounded-3xl border border-zinc-300/70 bg-white/80 p-7 shadow-[0_15px_40px_-20px_rgba(40,40,40,0.35)] backdrop-blur">
+          <div className="border-b border-zinc-100 pb-4">
+            <h2 className="text-lg font-semibold text-zinc-900">{flowLabels[flow]}</h2>
             <p className="mt-0.5 font-mono text-xs text-zinc-400">
               {apiBaseUrl}/api/v1/{flow}
             </p>
@@ -445,6 +581,8 @@ export default function Home() {
               onSubmitAnswers={submitConsolidacaoAnswers}
               loading={endpointStates.consolidacao.loading}
               error={endpointStates.consolidacao.error}
+              submittedQuestions={consolidacaoQuestions}
+              submittedAnswers={consolidacaoAnswers}
             />
           ) : null}
 
@@ -453,6 +591,7 @@ export default function Home() {
               result={flashcardsResult}
               sessionMemorized={sessionMemorized}
               onMemorize={handleMemorize}
+              onReviewAll={runFlashcardsReview}
             />
           ) : null}
         </section>

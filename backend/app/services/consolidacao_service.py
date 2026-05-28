@@ -1,8 +1,10 @@
 import json
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models import Student
 from app.prompts.consolidacao_prompt import (
     CONSOLIDACAO_SYSTEM_PROMPT,
     construir_prompt_consolidacao,
@@ -18,6 +20,10 @@ def avaliar_consolidacao(payload: ConsolidacaoRequest, db: Session) -> Consolida
     garantir_base_vetorial(db)
     context_chunks = recuperar_contexto_semantico(payload, db)
     context_text = "\n\n".join(context_chunks)
+
+    # Load student history to avoid repeating questions
+    student = _get_or_create_student(payload.student_id, payload.student_background, payload.known_topics, db)
+    previous_questions = _parse_json_list(student.consolidation_history_json)
 
     objectives = extrair_topicos(context_text)
     if not objectives:
@@ -49,11 +55,13 @@ def avaliar_consolidacao(payload: ConsolidacaoRequest, db: Session) -> Consolida
     prompt = construir_prompt_consolidacao(
         student_background=payload.student_background or "",
         known_topics=payload.known_topics,
+        consolidation_questions=payload.consolidation_questions,
         answered_questions=payload.answered_questions,
         objectives=objectives,
         dominated_initial=dominated_initial,
         not_understood_initial=not_understood_initial,
         retrieved_context=context_chunks,
+        previous_questions=previous_questions,
     )
 
     llm_text, llm_source = gerar_texto_llm(
@@ -67,6 +75,18 @@ def avaliar_consolidacao(payload: ConsolidacaoRequest, db: Session) -> Consolida
         parsed = fallback
         llm_source = "fallback"
 
+    # Persist generated questions in student history to avoid repetition next time
+    new_questions: list[str] = parsed.get("consolidation_questions", [])  # type: ignore[assignment]
+    if new_questions:
+        updated_history = previous_questions + [q for q in new_questions if q not in previous_questions]
+        student.consolidation_history_json = json.dumps(updated_history, ensure_ascii=False)
+        # Update student background/topics if provided
+        if payload.student_background:
+            student.background = payload.student_background
+        if payload.known_topics:
+            student.known_topics_json = json.dumps(payload.known_topics, ensure_ascii=False)
+        db.commit()
+
     return ConsolidacaoResponse(
         consolidation_questions=parsed.get("consolidation_questions", []),
         dominated_objectives=parsed.get("dominated_objectives", []),
@@ -76,6 +96,38 @@ def avaliar_consolidacao(payload: ConsolidacaoRequest, db: Session) -> Consolida
         retrieved_context=context_chunks,
         llm_source=llm_source,
     )
+
+
+def _get_or_create_student(
+    student_id: str,
+    background: str | None,
+    known_topics: list[str],
+    db: Session,
+) -> Student:
+    stmt = select(Student).where(Student.student_id == student_id)
+    student = db.execute(stmt).scalar_one_or_none()
+    if student is None:
+        student = Student(
+            student_id=student_id,
+            background=background,
+            known_topics_json=json.dumps(known_topics, ensure_ascii=False) if known_topics else None,
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+    return student
+
+
+def _parse_json_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if item]
+    except Exception:
+        pass
+    return []
 
 
 def _fallback_consolidacao(
