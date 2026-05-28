@@ -30,7 +30,7 @@ class DocumentChunk(Base):
 	source: Mapped[str] = mapped_column(String(255), nullable=False)
 	chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 	chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
-	embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+	embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
 	prerequisite_tag: Mapped[str | None] = mapped_column(String(120), nullable=True)
 	created_at: Mapped[datetime] = mapped_column(
 		DateTime(timezone=True), server_default=func.now(), nullable=False

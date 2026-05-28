@@ -102,6 +102,7 @@ def _gerar_flashcards_llm(
 		prompt=prompt,
 		fallback_text=fallback_json,
 		system_prompt=FLASHCARD_SYSTEM_PROMPT,
+		response_mime_type="application/json",
 	)
 	selected_norm_map = {normalizar_texto(concept): concept for concept in selected_concepts}
 	result: dict[str, FlashcardItem] = {}

@@ -19,6 +19,11 @@ def gerar_embedding(texto: str) -> list[float]:
 		return [0.0] * settings.embedding_dimension
 
 	provider = (settings.embedding_provider or "fastembed").lower()
+	if provider == "gemini":
+		vector = _gerar_embedding_gemini(texto)
+		if vector:
+			return _ajustar_dimensao(vector)
+		return _gerar_embedding_fallback(texto)
 	if provider == "ollama":
 		vector = _gerar_embedding_ollama(texto)
 		if vector:
@@ -124,3 +129,30 @@ def _ajustar_dimensao(vector: list[float]) -> list[float]:
 	if len(vector) >= settings.embedding_dimension:
 		return vector[: settings.embedding_dimension]
 	return vector + [0.0] * (settings.embedding_dimension - len(vector))
+
+
+def _gerar_embedding_gemini(texto: str) -> list[float] | None:
+	if not settings.gemini_api_token:
+		return None
+
+	model = settings.gemini_embedding_model
+	url = (
+		f"{settings.gemini_base_url.rstrip('/')}/v1beta/models/{model}:embedContent"
+		f"?key={settings.gemini_api_token}"
+	)
+	payload = {
+		"model": f"models/{model}",
+		"content": {"parts": [{"text": texto}]},
+		"outputDimensionality": settings.embedding_dimension,
+	}
+	try:
+		with httpx.Client(timeout=30.0) as client:
+			response = client.post(url, json=payload)
+			response.raise_for_status()
+			data = response.json()
+			values = data.get("embedding", {}).get("values")
+			if isinstance(values, list):
+				return [float(v) for v in values]
+	except Exception:
+		return None
+	return None

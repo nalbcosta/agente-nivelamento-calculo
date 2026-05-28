@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Eye, Layers, RotateCcw, Trophy } from "lucide-react";
+import { AlertCircle, Check, Eye, Layers, RotateCcw, Trophy } from "lucide-react";
 import { useState } from "react";
 import type { FlashcardsResponse } from "../types";
 
@@ -12,6 +12,42 @@ type Props = {
   onMemorize: (concept: string) => void;
   onReviewAll?: () => void;
 };
+
+/** Detect if a string looks like a raw JSON dump from the LLM */
+function looksLikeJson(text: string): boolean {
+  const t = text.trimStart();
+  return t.startsWith("{") || t.startsWith("[");
+}
+
+/** Render simple markdown: **bold** and * bullet lines */
+function SimpleMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-1 text-sm leading-[1.8] text-zinc-600">
+      {lines.map((line, i) => {
+        const isBullet = /^\s*[*-]\s/.test(line);
+        const content = line.replace(/^\s*[*-]\s/, "");
+        const parts = content.split(/(\*\*[^*]+\*\*)/g);
+        const formatted = parts.map((part, j) => {
+          if (part.startsWith("**") && part.endsWith("**")) {
+            return <strong key={j}>{part.slice(2, -2)}</strong>;
+          }
+          return <span key={j}>{part}</span>;
+        });
+        if (isBullet) {
+          return (
+            <div key={i} className="flex items-start gap-2">
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-zinc-400 inline-block" />
+              <span>{formatted}</span>
+            </div>
+          );
+        }
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        return <p key={i}>{formatted}</p>;
+      })}
+    </div>
+  );
+}
 
 function CardSession({
   flashcards,
@@ -125,7 +161,16 @@ function CardSession({
 
         {flipped ? (
           <div className="mt-4 border-t border-zinc-200 pt-4">
-            <p className="text-sm leading-6 text-zinc-600">{card.back}</p>
+            {looksLikeJson(card.back) ? (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                <p className="text-xs text-amber-700">
+                  Resposta não pôde ser exibida corretamente. Tente gerar novamente.
+                </p>
+              </div>
+            ) : (
+              <SimpleMarkdown text={card.back} />
+            )}
           </div>
         ) : null}
       </div>

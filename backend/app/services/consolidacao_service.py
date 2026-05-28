@@ -68,6 +68,7 @@ def avaliar_consolidacao(payload: ConsolidacaoRequest, db: Session) -> Consolida
         prompt=prompt,
         fallback_text=json.dumps(fallback, ensure_ascii=False),
         system_prompt=CONSOLIDACAO_SYSTEM_PROMPT,
+        response_mime_type="application/json",
     )
 
     parsed = _parse_consolidacao_json(llm_text)
