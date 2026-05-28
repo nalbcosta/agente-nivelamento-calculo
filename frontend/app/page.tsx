@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, BrainCircuit, CheckCircle2, Loader2, Upload } from "lucide-react";
+import { AlertCircle, ArrowRight, BrainCircuit, CheckCircle2, Info, Lock, Loader2, Upload } from "lucide-react";
 
 import { ConsolidacaoPanel } from "./components/ConsolidacaoPanel";
 import { FlashcardsPanel } from "./components/FlashcardsPanel";
@@ -98,6 +98,7 @@ export default function Home() {
   const [consolidacaoQuestions, setConsolidacaoQuestions] = useState<string[]>([]);
   const [consolidacaoAnswers, setConsolidacaoAnswers] = useState<string[]>([]);
   const [sessionMemorized, setSessionMemorized] = useState<string[]>([]);
+  const [completedSteps, setCompletedSteps] = useState<Set<Flow>>(new Set());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [lastFetchedStudentId, setLastFetchedStudentId] = useState<string | null>(null);
@@ -145,13 +146,36 @@ export default function Home() {
       .then((data: StudentProfile | null) => {
         if (!data) return;
         setStudentProfile(data);
+
+        const loaded: string[] = [];
+
+        // Merge known_topics from DB
+        if (data.known_topics?.length) {
+          setKnownTopicsText((prev) => {
+            const existing = new Set(
+              prev.split(/\n|,/).map((s) => s.trim().toLowerCase()).filter(Boolean),
+            );
+            const toAdd = data.known_topics.filter((t) => !existing.has(t.toLowerCase()));
+            if (!toAdd.length) return prev;
+            return [
+              ...(prev ? prev.split(/\n|,/).map((s) => s.trim()).filter(Boolean) : []),
+              ...toAdd,
+            ].join("\n");
+          });
+          loaded.push(`${data.known_topics.length} tópico(s) conhecido(s)`);
+        }
+
+        // Load background from DB if available
+        if (data.background) {
+          setStudentBackground(data.background);
+          loaded.push("background");
+        }
+
+        // Merge memorized_concepts from DB
         if (data.memorized_concepts?.length) {
           setMemorizedConceptsText((prev) => {
             const existing = new Set(
-              prev
-                .split(/\n|,/)
-                .map((s) => s.trim().toLowerCase())
-                .filter(Boolean),
+              prev.split(/\n|,/).map((s) => s.trim().toLowerCase()).filter(Boolean),
             );
             const toAdd = data.memorized_concepts.filter((c) => !existing.has(c.toLowerCase()));
             if (!toAdd.length) return prev;
@@ -160,9 +184,15 @@ export default function Home() {
               ...toAdd,
             ].join("\n");
           });
+          loaded.push(`${data.memorized_concepts.length} conceito(s) memorizado(s)`);
+        }
+
+        if (loaded.length > 0) {
+          showToast(`Perfil carregado: ${loaded.join(", ")}`, "success");
         }
       })
       .catch(() => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, lastFetchedStudentId]);
 
   function setEndpointLoading(endpoint: Endpoint, loading: boolean): void {
@@ -243,6 +273,7 @@ export default function Home() {
         }
         const data = (await response.json()) as NivelamentoResponse;
         setNivelamentoResult(data);
+        setCompletedSteps((prev) => new Set([...prev, "nivelamento"]));
         setEndpointSuccess("nivelamento", "Nivelamento concluido com sucesso.");
         return;
       }
@@ -281,6 +312,7 @@ export default function Home() {
       }
       const data = (await response.json()) as FlashcardsResponse;
       setFlashcardsResult(data);
+      setCompletedSteps((prev) => new Set([...prev, "flashcards"]));
       setEndpointSuccess("flashcards", `${data.flashcards.length} flashcard(s) gerado(s).`);
     } catch (error) {
       setEndpointError(flow, error instanceof Error ? error.message : "Erro inesperado ao executar fluxo.");
@@ -305,6 +337,7 @@ export default function Home() {
       const data = (await response.json()) as ConsolidacaoResponse;
       setConsolidacaoResult(data);
       setConsolidacaoStep("diagnosed");
+      setCompletedSteps((prev) => new Set([...prev, "consolidacao"]));
       setEndpointSuccess("consolidacao", "Diagnóstico concluído.");
       // Re-fetch profile to show updated question history count
       setLastFetchedStudentId(null);
@@ -399,10 +432,16 @@ export default function Home() {
           {/* Student profile badge */}
           {studentProfile && (
             <div className="mt-4 flex flex-wrap gap-2">
+              {studentProfile.known_topics.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">
+                  <span className="size-1.5 rounded-full bg-indigo-400" />
+                  {studentProfile.known_topics.length} tópico(s) no perfil
+                </span>
+              )}
               {studentProfile.memorized_concepts.length > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">
                   <span className="size-1.5 rounded-full bg-emerald-500" />
-                  {studentProfile.memorized_concepts.length} conceito(s) memorizados no DB
+                  {studentProfile.memorized_concepts.length} conceito(s) memorizados
                 </span>
               )}
               {studentProfile.previous_consolidation_questions.length > 0 && (
@@ -411,7 +450,8 @@ export default function Home() {
                   {studentProfile.previous_consolidation_questions.length} pergunta(s) no histórico
                 </span>
               )}
-              {studentProfile.memorized_concepts.length === 0 &&
+              {studentProfile.known_topics.length === 0 &&
+                studentProfile.memorized_concepts.length === 0 &&
                 studentProfile.previous_consolidation_questions.length === 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-500">
                     <span className="size-1.5 rounded-full bg-zinc-300" />
@@ -421,20 +461,42 @@ export default function Home() {
             </div>
           )}
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">            {(Object.keys(flowLabels) as Flow[]).map((flowOption) => (
-              <button
-                key={flowOption}
-                type="button"
-                onClick={() => setFlow(flowOption)}
-                className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition ${
-                  flow === flowOption
-                    ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
-                    : "border-zinc-200 bg-white/60 text-zinc-600 hover:border-zinc-400 hover:bg-white"
-                }`}
-              >
-                {flowLabels[flowOption]}
-              </button>
-            ))}
+          {/* Sequential stepper */}
+          <div className="mt-5 flex items-center gap-1">
+            {(["nivelamento", "consolidacao", "flashcards"] as Flow[]).map((flowOption, idx) => {
+              const isDone = completedSteps.has(flowOption);
+              const isActive = flow === flowOption;
+              const prerequisite: Flow | null = flowOption === "consolidacao" ? "nivelamento" : flowOption === "flashcards" ? "consolidacao" : null;
+              const isLocked = prerequisite !== null && !completedSteps.has(prerequisite);
+              return (
+                <div key={flowOption} className="flex items-center gap-1 flex-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setFlow(flowOption)}
+                    title={isLocked ? `Complete o Nivelamento primeiro` : undefined}
+                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                      isActive
+                        ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
+                        : isDone
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : isLocked
+                            ? "border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed opacity-70"
+                            : "border-zinc-200 bg-white/60 text-zinc-600 hover:border-zinc-400 hover:bg-white"
+                    }`}
+                  >
+                    <span className={`flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                      isActive ? "bg-white/20 text-white" : isDone ? "bg-emerald-600 text-white" : isLocked ? "bg-zinc-200 text-zinc-400" : "bg-zinc-100 text-zinc-500"
+                    }`}>
+                      {isDone ? <CheckCircle2 className="size-3.5" /> : isLocked ? <Lock className="size-3" /> : idx + 1}
+                    </span>
+                    <span className="truncate">{flowLabels[flowOption]}</span>
+                  </button>
+                  {idx < 2 && (
+                    <ArrowRight className={`size-3.5 shrink-0 ${completedSteps.has(flowOption) ? "text-emerald-400" : "text-zinc-300"}`} />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <form
@@ -525,6 +587,38 @@ export default function Home() {
               </div>
             ) : null}
 
+            {/* Leveraged knowledge info */}
+            {flow === "nivelamento" && studentProfile && (studentProfile.known_topics.length > 0 || studentProfile.background) && (
+              <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3.5 py-2.5 text-xs text-indigo-700">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  Aproveitando do perfil:{" "}
+                  {[
+                    studentProfile.known_topics.length > 0 && `${studentProfile.known_topics.length} tópico(s) conhecido(s)`,
+                    studentProfile.background && "background cadastrado",
+                  ].filter(Boolean).join(" e ")}
+                </span>
+              </div>
+            )}
+
+            {flow === "consolidacao" && studentProfile && studentProfile.previous_consolidation_questions.length > 0 && (
+              <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50/60 px-3.5 py-2.5 text-xs text-blue-700">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  Histórico de {studentProfile.previous_consolidation_questions.length} pergunta(s) salvas sendo considerado pelo agente.
+                </span>
+              </div>
+            )}
+
+            {flow === "flashcards" && studentProfile && studentProfile.memorized_concepts.length > 0 && (
+              <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs text-emerald-700">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  {studentProfile.memorized_concepts.length} conceito(s) já memorizado(s) no perfil serão excluídos da nova rodada.
+                </span>
+              </div>
+            )}
+
             {/* Action buttons */}
             <div className="flex flex-wrap gap-3 pt-1">
               <button
@@ -594,6 +688,37 @@ export default function Home() {
               onReviewAll={runFlashcardsReview}
             />
           ) : null}
+
+          {/* Próximo passo CTA */}
+          {flow === "nivelamento" && completedSteps.has("nivelamento") && !completedSteps.has("consolidacao") && (
+            <div className="mt-4 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-sm text-emerald-800">
+                <strong>Nivelamento concluído!</strong> Agora consolide o aprendizado pós-aula.
+              </p>
+              <button
+                type="button"
+                onClick={() => setFlow("consolidacao")}
+                className="ml-3 flex shrink-0 items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-800"
+              >
+                Consolidação <ArrowRight className="size-3.5" />
+              </button>
+            </div>
+          )}
+
+          {flow === "consolidacao" && completedSteps.has("consolidacao") && !completedSteps.has("flashcards") && (
+            <div className="mt-4 flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
+              <p className="text-sm text-blue-800">
+                <strong>Diagnóstico concluído!</strong> Agora reforce com flashcards adaptativos.
+              </p>
+              <button
+                type="button"
+                onClick={() => setFlow("flashcards")}
+                className="ml-3 flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-800"
+              >
+                Flashcards <ArrowRight className="size-3.5" />
+              </button>
+            </div>
+          )}
         </section>
       </main>
     </div>

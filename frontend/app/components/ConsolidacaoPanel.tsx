@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle, ChevronDown, ClipboardList, GraduationCap, Loader2, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { ConsolidacaoResponse } from "../types";
+import MathText from "./MathText";
 
 type Props = {
   step: "idle" | "questions" | "diagnosed";
@@ -169,7 +170,7 @@ function DiagnosisView({
             Recomendação de Revisão
           </p>
         </div>
-        <p className="text-sm leading-[1.75] text-zinc-800">{result.review_recommendation}</p>
+        <MathText text={result.review_recommendation} className="text-sm leading-[1.75] text-zinc-800" />
       </section>
 
       {/* Questions + answers submitted by student */}

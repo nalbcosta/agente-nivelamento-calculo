@@ -19,35 +19,7 @@ function looksLikeJson(text: string): boolean {
   return t.startsWith("{") || t.startsWith("[");
 }
 
-/** Render simple markdown: **bold** and * bullet lines */
-function SimpleMarkdown({ text }: { text: string }) {
-  const lines = text.split("\n");
-  return (
-    <div className="space-y-1 text-sm leading-[1.8] text-zinc-600">
-      {lines.map((line, i) => {
-        const isBullet = /^\s*[*-]\s/.test(line);
-        const content = line.replace(/^\s*[*-]\s/, "");
-        const parts = content.split(/(\*\*[^*]+\*\*)/g);
-        const formatted = parts.map((part, j) => {
-          if (part.startsWith("**") && part.endsWith("**")) {
-            return <strong key={j}>{part.slice(2, -2)}</strong>;
-          }
-          return <span key={j}>{part}</span>;
-        });
-        if (isBullet) {
-          return (
-            <div key={i} className="flex items-start gap-2">
-              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-zinc-400 inline-block" />
-              <span>{formatted}</span>
-            </div>
-          );
-        }
-        if (!line.trim()) return <div key={i} className="h-1" />;
-        return <p key={i}>{formatted}</p>;
-      })}
-    </div>
-  );
-}
+import MathText from "./MathText";
 
 function CardSession({
   flashcards,
@@ -169,7 +141,7 @@ function CardSession({
                 </p>
               </div>
             ) : (
-              <SimpleMarkdown text={card.back} />
+              <MathText text={card.back} className="text-sm leading-[1.8] text-zinc-600" />
             )}
           </div>
         ) : null}

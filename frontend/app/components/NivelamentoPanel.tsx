@@ -1,35 +1,6 @@
-import { AlertTriangle, BookOpen, CheckCircle, Circle, Sparkles, X } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle, Sparkles, X } from "lucide-react";
 import type { NivelamentoResponse } from "../types";
-
-/** Renders basic markdown: **bold**, * bullets */
-function SimpleMarkdown({ text }: { text: string }) {
-  const lines = text.split("\n");
-  return (
-    <div className="space-y-1.5 text-sm leading-[1.8] text-zinc-800">
-      {lines.map((line, i) => {
-        const isBullet = /^\s*\*\s/.test(line);
-        const content = line.replace(/^\s*\*\s/, "");
-        const parts = content.split(/(\*\*[^*]+\*\*)/g);
-        const formatted = parts.map((part, j) => {
-          if (part.startsWith("**") && part.endsWith("**")) {
-            return <strong key={j}>{part.slice(2, -2)}</strong>;
-          }
-          return <span key={j}>{part}</span>;
-        });
-        if (isBullet) {
-          return (
-            <div key={i} className="flex items-start gap-2">
-              <Circle className="mt-1.25 size-1.5 shrink-0 fill-zinc-400 text-zinc-400" />
-              <span>{formatted}</span>
-            </div>
-          );
-        }
-        if (!line.trim()) return <div key={i} className="h-1" />;
-        return <p key={i}>{formatted}</p>;
-      })}
-    </div>
-  );
-}
+import MathText from "./MathText";
 
 export function NivelamentoPanel({ result }: { result: NivelamentoResponse | null }) {
   if (!result) {
@@ -141,7 +112,7 @@ export function NivelamentoPanel({ result }: { result: NivelamentoResponse | nul
               {result.is_ready ? "Reforço Recomendado" : "Conteúdo de Nivelamento"}
             </p>
           </div>
-          <SimpleMarkdown text={result.support_text} />
+          <MathText text={result.support_text} className="text-sm leading-[1.8] text-zinc-800" />
         </section>
       ) : null}
     </div>
