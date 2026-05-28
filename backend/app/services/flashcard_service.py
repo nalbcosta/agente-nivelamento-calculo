@@ -31,7 +31,8 @@ def avaliar_flashcards(payload: FlashcardRequest, db: Session) -> FlashcardRespo
 	persisted = _listar_conceitos_memorizados(payload.student_id, db)
 	_memorizar_conceitos(payload.student_id, payload.memorized_concepts, db)
 	persisted_after = _listar_conceitos_memorizados(payload.student_id, db)
-	memorized_set = set(persisted_after.keys())
+	# In review_mode, treat every concept as pending regardless of DB state
+	memorized_set = set() if payload.review_mode else set(persisted_after.keys())
 	known_set = {normalizar_texto(topic.strip()) for topic in payload.known_topics}
 	background = normalizar_texto(payload.student_background or "")
 
@@ -90,6 +91,7 @@ def _gerar_flashcards_llm(
 	if not selected_concepts:
 		return {}, "fallback"
 	prompt = construir_prompt_flashcards(
+		student_id=payload.student_id,
 		student_background=payload.student_background or "",
 		known_topics=payload.known_topics,
 		retrieved_context=retrieved_context,
@@ -100,6 +102,7 @@ def _gerar_flashcards_llm(
 		prompt=prompt,
 		fallback_text=fallback_json,
 		system_prompt=FLASHCARD_SYSTEM_PROMPT,
+		response_mime_type="application/json",
 	)
 	selected_norm_map = {normalizar_texto(concept): concept for concept in selected_concepts}
 	result: dict[str, FlashcardItem] = {}

@@ -141,6 +141,7 @@ def extrair_prerequisitos_topicos_llm(retrieved_context: list[str]) -> tuple[lis
 		prompt=prompt,
 		fallback_text=fallback_json,
 		system_prompt=PREREQUISITOS_SYSTEM_PROMPT,
+		response_mime_type="application/json",
 	)
 	parsed = _parse_extracao_json(raw_text)
 	if not parsed:

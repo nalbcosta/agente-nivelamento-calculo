@@ -38,6 +38,17 @@ services:
   #     /bin/sh -c "ollama pull embeddinggemma && ollama pull qwen3.5:0.8b"
   #   restart: "no"
 
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+
   backend:
     build:
       context: ./backend

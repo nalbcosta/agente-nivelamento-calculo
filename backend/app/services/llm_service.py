@@ -23,13 +23,19 @@ def gerar_texto_nivelamento_llm(prompt: str, fallback_text: str) -> tuple[str, s
 	)
 
 
-def gerar_texto_llm(prompt: str, fallback_text: str, system_prompt: str) -> tuple[str, str]:
+def gerar_texto_llm(
+	prompt: str,
+	fallback_text: str,
+	system_prompt: str,
+	response_mime_type: str | None = None,
+) -> tuple[str, str]:
 	provider = (settings.llm_provider or "fallback").strip().lower()
 	provider_order = {
 		"ollama": ["ollama", "groq", "huggingface"],
 		"huggingface": ["huggingface", "groq", "ollama"],
-		"groq": ["groq", "ollama", "huggingface"],
-		"auto": ["groq", "huggingface", "ollama"],
+		"groq": ["groq", "gemini", "ollama", "huggingface"],
+		"gemini": ["gemini", "groq", "ollama", "huggingface"],
+		"auto": ["groq", "gemini", "huggingface", "ollama"],
 		"fallback": [],
 		"rule": [],
 	}.get(provider, [])
@@ -41,6 +47,8 @@ def gerar_texto_llm(prompt: str, fallback_text: str, system_prompt: str) -> tupl
 			response = _gerar_com_ollama(prompt, system_prompt)
 		elif candidate == "huggingface":
 			response = _gerar_com_huggingface(prompt, system_prompt)
+		elif candidate == "gemini":
+			response = _gerar_com_gemini(prompt, system_prompt, response_mime_type)
 		else:
 			response = _gerar_com_groq(prompt, system_prompt)
 		text = _normalizar_texto_resposta(response)
@@ -414,6 +422,57 @@ def _gerar_com_huggingface_langchain(prompt: str, system_prompt: str) -> str | N
 	except Exception as exc:
 		logger.warning("Hugging Face LangChain generation failed: %s", exc)
 		return None
+	return None
+
+
+def _gerar_com_gemini(prompt: str, system_prompt: str, response_mime_type: str | None = None) -> str | None:
+	if not settings.gemini_api_token:
+		logger.warning("Gemini API token not configured.")
+		return None
+
+	model = settings.gemini_chat_model
+	url = (
+		f"{settings.gemini_base_url.rstrip('/')}/v1beta/models/{model}:generateContent"
+		f"?key={settings.gemini_api_token}"
+	)
+	generation_config: dict[str, object] = {
+		"temperature": settings.llm_temperature,
+		"maxOutputTokens": settings.llm_max_new_tokens,
+	}
+	if response_mime_type:
+		generation_config["responseMimeType"] = response_mime_type
+	payload = {
+		"system_instruction": {"parts": [{"text": system_prompt}]},
+		"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+		"generationConfig": generation_config,
+	}
+
+	for attempt in range(1, 4):
+		try:
+			with httpx.Client(timeout=45.0) as client:
+				response = client.post(url, json=payload)
+				if response.status_code == 429:
+					logger.warning("Gemini rate limited (429). attempt=%s", attempt)
+					if attempt < 3:
+						time.sleep(1.0 * attempt)
+						continue
+				response.raise_for_status()
+				data = response.json()
+				candidates = data.get("candidates")
+				if isinstance(candidates, list) and candidates:
+					parts = candidates[0].get("content", {}).get("parts", [])
+					if parts:
+						text = _normalizar_texto_resposta(parts[0].get("text"))
+						if text:
+							return text
+				logger.warning("Gemini returned payload without usable content.")
+		except Exception as exc:
+			logger.warning("Gemini generation failed: %s", exc)
+			if attempt < 3:
+				time.sleep(1.0 * attempt)
+				continue
+			return None
+
 	return None
 
 
