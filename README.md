@@ -30,11 +30,11 @@ O agente gera flashcards no estilo pergunta/resposta para os conceitos de Cálcu
 
 | Camada | Tecnologia |
 |---|---|
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS v4 |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS v4, KaTeX v0.17 |
 | Backend | FastAPI, Python 3.12, SQLAlchemy, Alembic |
 | Banco de dados | PostgreSQL 18 + extensão pgvector |
-| Embeddings / RAG | `sentence-transformers/all-MiniLM-L6-v2` via Hugging Face |
-| LLM | Hugging Face Inference API → Groq → Ollama (fallback em cadeia) |
+| Embeddings / RAG | `gemini-embedding-2` via Google Gemini (1536 dims, MRL-truncated) |
+| LLM | Google Gemini → Groq → Hugging Face → Ollama (fallback em cadeia) |
 | Infra | Docker Compose, Adminer (admin DB) |
 
 ---
@@ -44,7 +44,7 @@ O agente gera flashcards no estilo pergunta/resposta para os conceitos de Cálcu
 ### Pré-requisitos
 
 - Docker e Docker Compose instalados
-- Chave de API do Hugging Face (gratuita em [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)) — ou Groq API token para maior velocidade
+- Chave de API do Google Gemini (gratuita em [aistudio.google.com/apikey](https://aistudio.google.com/apikey)) — ou Groq API token como fallback
 
 ### 1. Configurar variáveis de ambiente
 
@@ -52,13 +52,16 @@ O agente gera flashcards no estilo pergunta/resposta para os conceitos de Cálcu
 cp backend/.env.example backend/.env
 ```
 
-Edite `backend/.env` e preencha ao menos uma das chaves:
+Edite `backend/.env` e configure as chaves (Gemini é o padrão):
 
 ```env
-HUGGINGFACE_API_TOKEN=hf_...      # Hugging Face (padrão)
-# ou
-GROQ_API_TOKEN=gsk_...            # Groq (mais rápido, recomendado para demo)
-LLM_PROVIDER=groq                 # Trocar o provider padrão
+GEMINI_API_TOKEN=AIzaSy...        # Google Gemini (padrão)
+GEMINI_CHAT_MODEL=gemini-flash-lite-latest
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+
+# Fallbacks (opcionais):
+GROQ_API_TOKEN=gsk_...            # Groq
+HUGGINGFACE_API_TOKEN=hf_...      # Hugging Face
 ```
 
 ### 2. Subir todos os serviços

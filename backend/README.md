@@ -12,6 +12,7 @@ Base inicial do backend com FastAPI, SQLAlchemy, LangChain e suporte a LLM.
 - `alembic.ini`: configuração do Alembic
 - `scripts/test_nivelamento.py`: script de ingestão e teste do fluxo de nivelamento
 - `scripts/test_consolidacao.py`: script de teste do fluxo de consolidacao de aprendizagem
+- `scripts/test_flashcards.py`: script de teste do fluxo de memorização com flashcards
 
 ## Ambiente
 
@@ -33,12 +34,23 @@ python -m pip install -e .
 copy .env.example .env
 ```
 
-4. Ajuste `.env` para usar LLM real:
+4. Ajuste `.env` para usar Gemini ou outro LLM:
 
-- `LLM_PROVIDER=huggingface` ou `LLM_PROVIDER=ollama`
-- `HUGGINGFACE_API_TOKEN` quando `huggingface`
-- `HUGGINGFACE_CHAT_MODEL` conforme seu modelo
-- `OLLAMA_BASE_URL` e `OLLAMA_CHAT_MODEL` quando `ollama`
+```env
+# Primário (padrão):
+LLM_PROVIDER=gemini
+GEMINI_API_TOKEN=AIzaSy...
+GEMINI_CHAT_MODEL=gemini-flash-lite-latest
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+EMBEDDING_PROVIDER=gemini
+
+# Fallbacks alternativos:
+# LLM_PROVIDER=groq
+# GROQ_API_TOKEN=gsk_...
+# ou
+# LLM_PROVIDER=ollama
+# OLLAMA_BASE_URL=http://localhost:11434
+```
 
 ## Executar API
 
@@ -52,13 +64,15 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 O `docker-compose.yml` monta a pasta `./data` do projeto em `/app/data` no container.
 Isso garante que o arquivo `calculo_i_aula.md` esteja disponível para o backend.
 
-## Swagger / OpenAPI
+## Swagger / OpenAPI e Exemplos
 
 Após subir o backend, acesse:
 
 - Swagger UI: `http://localhost:8000/docs`
 - Redoc: `http://localhost:8000/redoc`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
+
+Para exemplos completos de curl de todos os endpoints, veja [docs/api-examples.md](../docs/api-examples.md)
 
 ## Testando o fluxo de nivelamento
 
