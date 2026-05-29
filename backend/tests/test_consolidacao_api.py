@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.routes import get_db as route_get_db
+from app.db.models import Student
 from app.main import app
 from app.services import consolidacao_service
 
@@ -20,6 +21,8 @@ def client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
     )
+    # Student table is required: avaliar_consolidacao calls _get_or_create_student on every request.
+    Student.__table__.create(bind=engine)
     testing_session_local = sessionmaker(bind=engine, autocommit=False, autoflush=False, class_=Session)
 
     def override_get_db() -> Generator[Session, None, None]:
@@ -61,10 +64,11 @@ def test_consolidacao_returns_llm_json_payload(client: TestClient, monkeypatch) 
         "not_understood_objectives": ["Regra da Cadeia"],
         "review_recommendation": "Revisar regra da cadeia com 3 exemplos guiados.",
     }
+    # gerar_texto_llm is called with response_mime_type as a keyword arg — the lambda must accept it.
     monkeypatch.setattr(
         consolidacao_service,
         "gerar_texto_llm",
-        lambda prompt, fallback_text, system_prompt: (json.dumps(llm_payload), "huggingface"),
+        lambda prompt, fallback_text, system_prompt, response_mime_type=None: (json.dumps(llm_payload), "gemini"),
     )
 
     payload = {
@@ -77,7 +81,7 @@ def test_consolidacao_returns_llm_json_payload(client: TestClient, monkeypatch) 
     assert response.status_code == 200
 
     body = response.json()
-    assert body["llm_source"] == "huggingface"
+    assert body["llm_source"] == "gemini"
     assert len(body["consolidation_questions"]) == 3
     assert body["dominated_objectives"] == ["Limites"]
     assert body["not_understood_objectives"] == ["Regra da Cadeia"]
@@ -87,7 +91,7 @@ def test_consolidacao_falls_back_when_llm_json_is_invalid(client: TestClient, mo
     monkeypatch.setattr(
         consolidacao_service,
         "gerar_texto_llm",
-        lambda prompt, fallback_text, system_prompt: ("resposta invalida", "huggingface"),
+        lambda prompt, fallback_text, system_prompt, response_mime_type=None: ("resposta invalida", "gemini"),
     )
 
     payload = {
@@ -110,7 +114,7 @@ def test_consolidacao_fallback_uses_answered_questions_for_partial_diagnosis(cli
     monkeypatch.setattr(
         consolidacao_service,
         "gerar_texto_llm",
-        lambda prompt, fallback_text, system_prompt: ("resposta invalida", "huggingface"),
+        lambda prompt, fallback_text, system_prompt, response_mime_type=None: ("resposta invalida", "gemini"),
     )
 
     payload = {

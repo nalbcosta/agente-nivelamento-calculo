@@ -15,6 +15,7 @@ services:
       timeout: 5s
       retries: 10
 
+  # Se você estiver usando o Ollama, descomente as linhas abaixo para adicionar o serviço do Ollama ao seu ambiente Docker.
   # ollama:
   #   image: ollama/ollama:latest
   #   ports:
@@ -27,6 +28,7 @@ services:
   #     timeout: 10s
   #     retries: 20
 
+  # Se a inicialização do Ollama for demorada, você pode usar um serviço auxiliar para garantir que o backend só inicie após o Ollama estar pronto. Descomente as linhas abaixo para adicionar esse serviço.
   # ollama-init:
   #   image: ollama/ollama:latest
   #   depends_on:
@@ -63,6 +65,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # Se a inicialização do Ollama for demorada, descomente as linhas abaixo para garantir que o backend só inicie após o Ollama estar pronto.
       # ollama-init:
       #   condition: service_completed_successfully
     ports:
@@ -72,5 +75,6 @@ services:
 volumes:
   db_data:
     name: agente_nivelamento_db_data
+  # Se você estiver usando o Ollama, descomente as linhas abaixo para criar um volume dedicado para os dados do Ollama.
   # ollama_data:
   #   name: agente_nivelamento_ollama_data
